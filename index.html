@@ -1,0 +1,233 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Catatan Trading</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.6/dist/css/bootstrap.min.css" rel="stylesheet"
+        integrity="sha384-4Q6Gf2aSP4eDXB8Miphtr37CMZZQ5oXLH2yaXMJ2w8e2ZtHTl7GptT4jmndRuHDT" crossorigin="anonymous">
+</head>
+
+<body>
+    <div class="container">
+        <div class="text-center my-3">
+            <h1>Catatan Trading</h1>
+        <h2>Modal Awal: $50 | Target: $20.000</h2>
+        </div>
+
+        <div class="row">
+            <div class="col card p-3">
+                <form id="tradeForm">
+                    <div class="mb-3">
+                        <label>Tanggal:</label>
+                        <input type="date" id="date" class="form-control" required />
+                    </div>
+
+                    <div class="mb-3">
+                        <label>Pasangan:</label>
+                        <input type="text" id="pair" class="form-control" placeholder="Contoh: BTC/USDT" required />
+                    </div>
+
+                    <div class="mb-3">
+                        <label>Jenis:</label>
+                    <select id="type" class="form-select">
+                        <option value="buy">Buy</option>
+                        <option value="sell">Sell</option>
+                    </select>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label>Modal Digunakan ($):</label>
+                    <input type="number" id="amount" class="form-control" required />
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label>Profit/Loss ($):</label>
+                    <input type="number" id="profitLoss" class="form-control" required />
+                    </div>
+                    
+                    <button type="submit" class="btn btn-primary">Tambah Catatan</button>
+                </form>
+            </div>
+
+            <div class="col">
+                <div class="card p-3">
+                    <div class="controls mb-3">
+                        <button onclick="exportToCSV()" class="btn btn-primary">Export ke CSV</button>
+                        <button onclick="clearAll()" class="btn btn-primary">Hapus Semua Data</button>
+                    </div>
+
+                    <table class="table table-striped table-hover" id="logTable">
+                        <thead>
+                            <tr>
+                                <th>Tanggal</th>
+                                <th>Pasangan</th>
+                                <th>Jenis</th>
+                                <th>Modal</th>
+                                <th>Profit/Loss</th>
+                            </tr>
+                        </thead>
+                        <tbody></tbody>
+                    </table>
+
+                    <div class="summary" id="summary">
+                        Total Modal: $50 | Total Profit: $0 | Total: $50
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="row">
+            <div class="col">
+                <div id="chartContainer" class="card p-3 m-3">
+                    <canvas id="capitalChart"></canvas>
+                    <div class="summary" id="winrate">
+                        Win Rate: 0% | Loss Rate: 0%
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.6/dist/js/bootstrap.bundle.min.js"
+        integrity="sha384-j1CDi7MgGQ12Z7Qab0qlWQ/Qqz24Gc6BM0thvEMVjHnfYGF0rmFCozFSxQBxwHKO" crossorigin="anonymous">
+    </script>
+
+    <script>
+        const form = document.getElementById('tradeForm');
+        const tableBody = document.querySelector('#logTable tbody');
+        const summary = document.getElementById('summary');
+        const winrateText = document.getElementById('winrate');
+        const startingCapital = 50;
+        let tradeLog = JSON.parse(localStorage.getItem("tradeLog")) || [];
+
+        let chart;
+
+        function updateChart(labels, data) {
+            if (chart) chart.destroy();
+            const ctx = document.getElementById('capitalChart').getContext('2d');
+            chart = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: labels,
+                    datasets: [{
+                        label: 'Pertumbuhan Modal',
+                        data: data,
+                        borderColor: '#0077cc',
+                        fill: false,
+                        tension: 0.2,
+                        pointRadius: 4
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    plugins: {
+                        legend: {
+                            display: true
+                        },
+                        tooltip: {
+                            mode: 'index',
+                            intersect: false
+                        }
+                    },
+                    scales: {
+                        y: {
+                            beginAtZero: true
+                        }
+                    }
+                }
+            });
+        }
+
+        function updateTable() {
+            tableBody.innerHTML = '';
+            let totalProfit = 0;
+            let win = 0,
+                loss = 0;
+            let labels = [],
+                values = [];
+
+            tradeLog.forEach((trade, index) => {
+                const row = tableBody.insertRow();
+                row.innerHTML = `
+          <td>${trade.date}</td>
+          <td>${trade.pair}</td>
+          <td>${trade.type}</td>
+          <td>$${trade.amount.toFixed(2)}</td>
+          <td>$${trade.profitLoss.toFixed(2)}</td>
+        `;
+
+                totalProfit += trade.profitLoss;
+                if (trade.profitLoss > 0) win++;
+                else if (trade.profitLoss < 0) loss++;
+
+                labels.push(trade.date);
+                values.push(startingCapital + tradeLog.slice(0, index + 1).reduce((sum, t) => sum + t
+                    .profitLoss, 0));
+            });
+
+            const currentTotal = startingCapital + totalProfit;
+            summary.innerHTML = `
+        Total Modal: $${startingCapital.toFixed(2)} |
+        Total Profit: $${totalProfit.toFixed(2)} |
+        Total: $${currentTotal.toFixed(2)}
+        ${currentTotal >= 20000 ? '<br><span class="target-reached">🎉 Target Tercapai!</span>' : ''}
+      `;
+
+            const totalTrades = win + loss;
+            const winRate = totalTrades > 0 ? (win / totalTrades) * 100 : 0;
+            const lossRate = totalTrades > 0 ? (loss / totalTrades) * 100 : 0;
+
+            winrateText.innerHTML = `
+        Win Rate: ${winRate.toFixed(2)}% | Loss Rate: ${lossRate.toFixed(2)}%
+      `;
+
+            updateChart(labels, values);
+        }
+
+        form.addEventListener('submit', function (e) {
+            e.preventDefault();
+            const trade = {
+                date: document.getElementById('date').value,
+                pair: document.getElementById('pair').value,
+                type: document.getElementById('type').value,
+                amount: parseFloat(document.getElementById('amount').value),
+                profitLoss: parseFloat(document.getElementById('profitLoss').value),
+            };
+
+            tradeLog.push(trade);
+            localStorage.setItem("tradeLog", JSON.stringify(tradeLog));
+            updateTable();
+            form.reset();
+        });
+
+        function clearAll() {
+            if (confirm("Apakah kamu yakin ingin menghapus semua data?")) {
+                tradeLog = [];
+                localStorage.removeItem("tradeLog");
+                updateTable();
+            }
+        }
+
+        function exportToCSV() {
+            let csv = "Tanggal,Pasangan,Jenis,Modal,Profit/Loss\n";
+            tradeLog.forEach(trade => {
+                csv += `${trade.date},${trade.pair},${trade.type},${trade.amount},${trade.profitLoss}\n`;
+            });
+
+            const blob = new Blob([csv], {
+                type: "text/csv;charset=utf-8;"
+            });
+            const link = document.createElement("a");
+            link.href = URL.createObjectURL(blob);
+            link.download = "catatan_trading.csv";
+            link.click();
+        }
+
+        updateTable(); // initial load
+    </script>
+</body>
+
+</html>
